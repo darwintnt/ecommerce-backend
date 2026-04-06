@@ -1,0 +1,93 @@
+services:
+  localstack:
+    container_name: localstack_ecommerce
+    image: localstack/localstack:latest
+    ports:
+      - "127.0.0.1:4566:4566"
+      - "127.0.0.1:4510-4559:4510-4559"
+    environment:
+      - SERVICES=apigateway,s3,lambda,sns,sqs
+      - DEBUG=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - LOCALSTACK_AUTH_TOKEN=ls-hanIGoHu-GEVA-8731-Tugo-JopI07998604
+    volumes:
+      - "./localstack_data:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
+      - "./api-gateway.yml:/etc/localstack/init/ready.d/api-gateway.yml"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce_network
+  postgres_db:
+    container_name: postgres_ecommerce
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=ecommerce_pass
+      - POSTGRES_DB=ecommerce_main
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
+
+    networks:
+      - ecommerce_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d ecommerce_main"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  products_service:
+    container_name: products_service
+    build:
+      context: ./ecommerce-backend
+      dockerfile: Dockerfile
+      args:
+        - APP_NAME=products-service
+    ports:
+      - "3001:3000"
+    environment:
+      - APP_NAME=products-service
+      - DATABASE_URL=postgresql://admin:ecommerce_pass@postgres_db:5432/products_db
+      - AWS_ENDPOINT=http://localstack:4566
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - ecommerce_network
+  orders_service:
+    container_name: orders_service
+    build:
+      context: ./ecommerce-backend
+      dockerfile: Dockerfile
+      args:
+        - APP_NAME=orders-service
+    ports:
+      - "3002:3000"
+    environment:
+      - APP_NAME=orders-service
+      - DATABASE_URL=postgresql://admin:ecommerce_pass@postgres_db:5432/orders_db
+      - AWS_ENDPOINT=http://localstack:4566
+      - PRODUCTS_SERVICE_URL=http://products_service:3000
+
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - ecommerce_network
+
+networks:
+  ecommerce_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

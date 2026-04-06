@@ -1,0 +1,262 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+          - localstack
+        default: "localstack"
+      version-tag:
+        description: 'Version tag to deploy (e.g., v1.0.0, or "latest")'
+        required: true
+        default: "latest"
+      run-tests:
+        description: "Run smoke tests after deployment"
+        required: false
+        type: boolean
+        default: true
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
+  REGISTRY: ghcr.io
+
+jobs:
+  validate:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+      environment: ${{ steps.validate.outputs.environment }}
+    steps:
+      - name: Validate version tag
+        id: validate
+        run: |
+          VERSION="${{ github.event.inputs.version-tag }}"
+          ENVIRONMENT="${{ github.event.inputs.environment }}"
+
+          echo "Deploying version: $VERSION"
+          echo "Environment: $ENVIRONMENT"
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+
+          echo "## Deployment Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: $ENVIRONMENT" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run Tests**: ${{ github.event.inputs.run-tests }}" >> $GITHUB_STEP_SUMMARY
+
+  deploy:
+    name: Deploy to ${{ needs.validate.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: validate
+    environment:
+      name: ${{ needs.validate.outputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker images
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+
+          if [ "$VERSION" == "latest" ]; then
+            PRODUCTS_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/products-service:latest"
+            ORDERS_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/orders-service:latest"
+          else
+            PRODUCTS_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/products-service:${VERSION}"
+            ORDERS_IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/orders-service:${VERSION}"
+          fi
+
+          echo "Pulling images:"
+          echo "- Products: $PRODUCTS_IMAGE"
+          echo "- Orders: $ORDERS_IMAGE"
+
+          docker pull $PRODUCTS_IMAGE || echo "⚠️ Products image not found, will build locally"
+          docker pull $ORDERS_IMAGE || echo "⚠️ Orders image not found, will build locally"
+
+      - name: Deploy with Docker Compose
+        run: |
+          # Create deployment-specific .env
+          cat > .env << EOF
+          POSTGRES_USER=admin
+          POSTGRES_PASSWORD=ecommerce_pass
+          PRODUCTS_DB=products_db
+          ORDERS_DB=orders_db
+          LOCALSTACK_AUTH_TOKEN=ls-hanIGoHu-GEVA-8731-Tugo-JopI07998604
+          VERSION=${{ needs.validate.outputs.version }}
+          ENVIRONMENT=${{ needs.validate.outputs.environment }}
+          EOF
+
+          # Start services
+          docker-compose up -d
+
+          echo "⏳ Waiting for services to start..."
+          sleep 45
+
+      - name: Check deployment health
+        run: |
+          echo "## Service Health Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          docker-compose ps >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          # Check if services are running
+          RUNNING=$(docker-compose ps | grep "Up" | wc -l)
+          if [ $RUNNING -lt 3 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Not all services are running" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Run smoke tests
+        if: github.event.inputs.run-tests == 'true'
+        id: smoke-tests
+        run: |
+          echo "## 🧪 Smoke Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Test Products Service
+          echo "### Testing Products Service..." >> $GITHUB_STEP_SUMMARY
+          PRODUCTS_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:3001/products?page=1&limit=1)
+          PRODUCTS_STATUS=$(echo "$PRODUCTS_RESPONSE" | tail -n1)
+
+          if [ "$PRODUCTS_STATUS" == "200" ]; then
+            echo "✅ Products Service - HTTP $PRODUCTS_STATUS" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Products Service - HTTP $PRODUCTS_STATUS" >> $GITHUB_STEP_SUMMARY
+            echo "products_failed=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Test Orders Service
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Testing Orders Service..." >> $GITHUB_STEP_SUMMARY
+          ORDERS_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:3002/orders?page=1&limit=1)
+          ORDERS_STATUS=$(echo "$ORDERS_RESPONSE" | tail -n1)
+
+          if [ "$ORDERS_STATUS" == "200" ]; then
+            echo "✅ Orders Service - HTTP $ORDERS_STATUS" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Orders Service - HTTP $ORDERS_STATUS" >> $GITHUB_STEP_SUMMARY
+            echo "orders_failed=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Create a test order
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Testing Order Creation..." >> $GITHUB_STEP_SUMMARY
+
+          # First get a product ID
+          PRODUCT_ID=$(curl -s http://localhost:3001/products?page=1&limit=1 | jq -r '.data[0].id')
+
+          ORDER_PAYLOAD=$(cat <<EOF
+          {
+            "customerId": "550e8400-e29b-41d4-a716-446655440000",
+            "totalAmount": "100.00",
+            "orderItems": [
+              {
+                "productId": "$PRODUCT_ID",
+                "quantity": 1,
+                "unitPrice": "100.00"
+              }
+            ]
+          }
+          EOF
+          )
+
+          CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:3002/orders \
+            -H "Content-Type: application/json" \
+            -d "$ORDER_PAYLOAD")
+          CREATE_STATUS=$(echo "$CREATE_RESPONSE" | tail -n1)
+
+          if [ "$CREATE_STATUS" == "201" ]; then
+            echo "✅ Order Creation - HTTP $CREATE_STATUS" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Order Creation - HTTP $CREATE_STATUS" >> $GITHUB_STEP_SUMMARY
+            echo "order_creation_failed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "## 📋 Service Logs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Products Service" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          docker logs products_service --tail 100 >> $GITHUB_STEP_SUMMARY 2>&1
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Orders Service" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          docker logs orders_service --tail 100 >> $GITHUB_STEP_SUMMARY 2>&1
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Rollback on test failure
+        if: |
+          failure() &&
+          github.event.inputs.run-tests == 'true'
+        run: |
+          echo "## ⚠️ Rolling Back Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Tests failed, stopping services..." >> $GITHUB_STEP_SUMMARY
+
+          docker-compose down
+
+          echo "❌ Deployment rolled back due to test failures" >> $GITHUB_STEP_SUMMARY
+          exit 1
+
+      - name: Keep services running for manual testing
+        if: success() && needs.validate.outputs.environment == 'localstack'
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎉 Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "ℹ️ Services are running and ready for manual testing:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Products Service: http://localhost:3001" >> $GITHUB_STEP_SUMMARY
+          echo "- Orders Service: http://localhost:3002" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Note**: Remember to run \`docker-compose down\` to stop services" >> $GITHUB_STEP_SUMMARY
+
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [validate, deploy]
+    if: always()
+    steps:
+      - name: Create summary
+        run: |
+          echo "## 📊 Manual Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ needs.validate.outputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | ${{ needs.validate.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests Executed | ${{ github.event.inputs.run-tests }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "### ✅ Deployment completed successfully!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Deployment failed" >> $GITHUB_STEP_SUMMARY
+          fi
