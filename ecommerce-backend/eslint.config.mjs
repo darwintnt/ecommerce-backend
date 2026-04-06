@@ -8,7 +8,7 @@ export default tseslint.config(
   {
     ignores: [
       'eslint.config.mjs',
-      '**/generated/**',
+      '**/src/generated/**',
       '**/dist/**',
       '**/node_modules/**',
       '**/coverage/**'

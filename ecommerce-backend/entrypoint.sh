@@ -27,34 +27,35 @@ fi
 
 echo "Configuración encontrada: $CONFIG_PATH"
 echo "Schema encontrado: $SCHEMA_PATH"
-echo "Ejecutando migraciones de Prisma..."
 
 # Cambiar al directorio del servicio para que Prisma encuentre prisma.config.ts
 cd "apps/${APP_NAME}"
 
-# Ejecutar migraciones (solo aplica las pendientes, es idempotente)
-npx prisma migrate deploy
+# Generar el cliente de Prisma
+echo "Generando cliente de Prisma..."
+npx prisma generate
 
-MIGRATION_STATUS=$?
-
-if [ $MIGRATION_STATUS -eq 0 ]; then
-  echo "✓ Migraciones aplicadas exitosamente"
-else
-  echo "✗ Error al aplicar migraciones (código: $MIGRATION_STATUS)"
-  echo "Intentando generar el cliente de Prisma..."
-  
-  # Intentar generar el cliente de Prisma por si acaso
-  npx prisma generate
-  
-  # Reintentar migraciones
+# Verificar si existe la carpeta de migraciones
+if [ -d "prisma/migrations" ]; then
+  echo "Ejecutando migraciones de Prisma..."
   npx prisma migrate deploy
   
-  if [ $? -ne 0 ]; then
-    echo "✗ Error al aplicar migraciones después de reintentar"
+  if [ $? -eq 0 ]; then
+    echo "✓ Migraciones aplicadas exitosamente"
+  else
+    echo "✗ Error al aplicar migraciones"
     exit 1
   fi
+else
+  echo "⚠️  No se encontraron migraciones. Usando 'prisma db push' para sincronizar el schema..."
+  npx prisma db push --accept-data-loss
   
-  echo "✓ Migraciones aplicadas exitosamente después de generar cliente"
+  if [ $? -eq 0 ]; then
+    echo "✓ Schema sincronizado exitosamente con la base de datos"
+  else
+    echo "✗ Error al sincronizar el schema"
+    exit 1
+  fi
 fi
 
 # Ejecutar seeder SQL si existe (solo para products-service la primera vez)

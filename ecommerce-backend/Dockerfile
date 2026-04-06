@@ -17,7 +17,7 @@ ARG APP_NAME
 
 # Generar el cliente de Prisma antes de construir para evitar errores de tipado
 # En Prisma 7, el comando debe ejecutarse desde el directorio del servicio donde está prisma.config.ts
-RUN cd apps/${APP_NAME} && npx prisma generate || true
+RUN cd apps/${APP_NAME} && npx prisma generate
 
 RUN npx nest build ${APP_NAME}
 
@@ -46,7 +46,7 @@ EXPOSE 3000
 
 # Comando para arrancar la aplicación específica
 ARG APP_NAME
-ENV APP_TARGET=${APP_NAME}
+ENV APP_NAME=${APP_NAME}
 
 # Usar entrypoint para ejecutar migraciones antes de iniciar la app
 ENTRYPOINT ["/app/entrypoint.sh"]
