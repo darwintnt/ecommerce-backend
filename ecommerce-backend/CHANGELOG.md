@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1](https://github.com/darwintnt/ecommerce-backend/compare/v1.0.0...v1.0.1) (2026-04-06)
+
+### 🐛 Bug Fixes
+
+* update Node.js version requirement and improve README structure ([53ec7cd](https://github.com/darwintnt/ecommerce-backend/commit/53ec7cd1be058443166560f11b2fa607cc947593))
+
 ## 1.0.0 (2026-04-06)
 
 ### ✨ Features
