@@ -206,7 +206,7 @@ docker-compose --version
 ## 🏗️ Estructura del Proyecto
 
 ```
-main_folder/
+ecommerce-backend/
 ├── docker-compose.yml           # Orquestación de contenedores
 ├── init-databases.sh            # Script para crear bases de datos
 ├── init-aws.sh                  # Script para configurar LocalStack
@@ -269,7 +269,7 @@ docker-compose build --no-cache
 # 3. Iniciar todos los servicios
 docker-compose up -d
 
-# 4. Ver logs en tiempo real alki buscar la propiedad PI Gateway ID que se requerira para poder consumir los endpoints por medio del API GATEWAY simulado usando localstack
+# 4. Ver logs en tiempo real, en ellos buscar la propiedad API Gateway ID que se requerira para poder consumir los endpoints por medio del API GATEWAY simulado usando localstack
 docker-compose logs -f
 ```
 
