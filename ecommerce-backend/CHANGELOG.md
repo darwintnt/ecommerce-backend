@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2](https://github.com/darwintnt/ecommerce-backend/compare/v1.0.1...v1.0.2) (2026-04-06)
+
+### 🐛 Bug Fixes
+
+* correct project folder name and improve log instruction clarity in README ([a04b958](https://github.com/darwintnt/ecommerce-backend/commit/a04b9586abefbb364a96d062a5c74ed7fa1c9d51))
+
 ## [1.0.1](https://github.com/darwintnt/ecommerce-backend/compare/v1.0.0...v1.0.1) (2026-04-06)
 
 ### 🐛 Bug Fixes
