@@ -80,6 +80,12 @@ jobs:
           path: ecommerce-backend/node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('**/pnpm-lock.yaml') }}
 
+      - name: Generate Prisma Clients
+        working-directory: ./ecommerce-backend
+        run: |
+          pnpm prisma generate --schema=./apps/products-service/prisma/schema.prisma
+          pnpm prisma generate --schema=./apps/orders-service/prisma/schema.prisma
+
       - name: Run ESLint
         working-directory: ./ecommerce-backend
         run: pnpm run lint
@@ -107,6 +113,12 @@ jobs:
         with:
           path: ecommerce-backend/node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Generate Prisma Clients
+        working-directory: ./ecommerce-backend
+        run: |
+          pnpm prisma generate --schema=./apps/products-service/prisma/schema.prisma
+          pnpm prisma generate --schema=./apps/orders-service/prisma/schema.prisma
 
       - name: Run tests
         working-directory: ./ecommerce-backend
@@ -148,6 +160,12 @@ jobs:
         with:
           path: ecommerce-backend/node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Generate Prisma Clients
+        working-directory: ./ecommerce-backend
+        run: |
+          pnpm prisma generate --schema=./apps/products-service/prisma/schema.prisma
+          pnpm prisma generate --schema=./apps/orders-service/prisma/schema.prisma
 
       - name: Build Products Service
         working-directory: ./ecommerce-backend
@@ -193,6 +211,12 @@ jobs:
         with:
           path: ecommerce-backend/node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Generate Prisma Clients
+        working-directory: ./ecommerce-backend
+        run: |
+          pnpm prisma generate --schema=./apps/products-service/prisma/schema.prisma
+          pnpm prisma generate --schema=./apps/orders-service/prisma/schema.prisma
 
       - name: Build Orders Service
         working-directory: ./ecommerce-backend

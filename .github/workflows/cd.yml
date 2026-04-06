@@ -44,6 +44,12 @@ jobs:
         working-directory: ./ecommerce-backend
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma Clients
+        working-directory: ./ecommerce-backend
+        run: |
+          pnpm prisma generate --schema=./apps/products-service/prisma/schema.prisma
+          pnpm prisma generate --schema=./apps/orders-service/prisma/schema.prisma
+
       - name: Run Semantic Release
         id: semantic
         working-directory: ./ecommerce-backend
