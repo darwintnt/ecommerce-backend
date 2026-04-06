@@ -1,8 +1,8 @@
 # E-commerce Backend - Microservicios
 
-[![CI](https://github.com/darwintnt/technical-test-lk/actions/workflows/ci.yml/badge.svg)](https://github.com/darwintnt/technical-test-lk/actions/workflows/ci.yml)
-[![CD](https://github.com/darwintnt/technical-test-lk/actions/workflows/cd.yml/badge.svg)](https://github.com/darwintnt/technical-test-lk/actions/workflows/cd.yml)
-[![Release](https://img.shields.io/github/v/release/darwintnt/technical-test-lk?label=version)](https://github.com/darwintnt/technical-test-lk/releases)
+[![CI](https://github.com/darwintnt/ecommerce-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/darwintnt/ecommerce-backend/actions/workflows/ci.yml)
+[![CD](https://github.com/darwintnt/ecommerce-backend/actions/workflows/cd.yml/badge.svg)](https://github.com/darwintnt/ecommerce-backend/actions/workflows/cd.yml)
+[![Release](https://img.shields.io/github/v/release/darwintnt/ecommerce-backend?label=version)](https://github.com/darwintnt/ecommerce-backend/releases)
 [![License](https://img.shields.io/badge/license-UNLICENSED-red.svg)](LICENSE)
 
 Sistema de e-commerce basado en microservicios usando NestJS, Prisma, PostgreSQL y LocalStack (AWS local).
