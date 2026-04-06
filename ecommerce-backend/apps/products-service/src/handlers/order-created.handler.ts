@@ -38,7 +38,6 @@ export class OrderCreatedHandler
         );
 
         try {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
           await this.productsService.decrementStock(
             item.productId,
             item.quantity,
