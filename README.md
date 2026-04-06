@@ -193,7 +193,7 @@ Antes de comenzar, asegúrate de tener instalado:
 
 - **Docker**: versión 20.10 o superior
 - **Docker Compose**: versión 2.0 o superior
-- **Node.js**: versión 18 o superior (solo para desarrollo local sin Docker)
+- **Node.js**: versión 22 o superior (solo para desarrollo local sin Docker)
 - **npm o pnpm**: para instalar dependencias localmente
 
 ### Verificar instalación
@@ -206,7 +206,7 @@ docker-compose --version
 ## 🏗️ Estructura del Proyecto
 
 ```
-linktic/
+main_folder/
 ├── docker-compose.yml           # Orquestación de contenedores
 ├── init-databases.sh            # Script para crear bases de datos
 ├── init-aws.sh                  # Script para configurar LocalStack
@@ -237,8 +237,8 @@ linktic/
 ### 1. Clonar el repositorio
 
 ```bash
-git clone <repo-url>
-cd linktic
+git clone https://github.com/darwintnt/ecommerce-backend
+cd ecommerce-backend
 ```
 
 ### 2. Variables de entorno
@@ -269,7 +269,7 @@ docker-compose build --no-cache
 # 3. Iniciar todos los servicios
 docker-compose up -d
 
-# 4. Ver logs en tiempo real
+# 4. Ver logs en tiempo real alki buscar la propiedad PI Gateway ID que se requerira para poder consumir los endpoints por medio del API GATEWAY simulado usando localstack
 docker-compose logs -f
 ```
 
@@ -346,14 +346,13 @@ curl http://localhost:3001/products
 curl http://localhost:3001/products/{id}
 
 # Crear un producto
-curl -X POST http://localhost:3001/products \
+curl -X POST http://localhost:4566/_aws/execute-api/{API_ID}/dev/products \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Producto Test",
     "description": "Descripción del producto",
     "price": 99900,
-    "stock": 10,
-    "sku": "TEST-001"
+    "stock": 10
   }'
 ```
 
@@ -361,18 +360,19 @@ curl -X POST http://localhost:3001/products \
 
 ```bash
 # Listar pedidos
-curl http://localhost:3002/orders
+curl http://localhost:4566/_aws/execute-api/{API_ID}/dev/orders
 
 # Crear un pedido
-curl -X POST http://localhost:3002/orders \
+curl -X POST http://localhost:4566/_aws/execute-api/{API_ID}/dev/orders \
   -H "Content-Type: application/json" \
   -d '{
     "customerId": "uuid-del-cliente",
-    "items": [
+    "totalAmount": "200000",
+    "orderItems": [
       {
         "productId": "uuid-del-producto",
         "quantity": 2,
-        "unitPrice": 99900
+        "unitPrice": "100000"
       }
     ]
   }'
@@ -445,7 +445,7 @@ awslocal --endpoint-url=http://localhost:4566 sqs list-queues
 docker volume ls
 
 # Ver detalles del volumen de PostgreSQL
-docker volume inspect linktic_postgres_data
+docker volume inspect ecommerce-backend_postgres_data
 
 # Borrar volúmenes huérfanos
 docker volume prune
@@ -559,18 +559,122 @@ docker exec -it postgres_ecommerce psql -U admin -d products_db -f /path/to/seed
 
 5. **Monorepo**: Ambos microservicios comparten las mismas dependencias (node_modules) pero tienen esquemas de base de datos independientes.
 
-## 🤝 Contribuir
 
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
+---
+
+## 🏗️ Decisiones Técnicas Relevantes
+
+### 1. Arquitectura de Microservicios con Separación de Responsabilidades
+
+- **Products Service** y **Orders Service** como servicios independientes con responsabilidades claramente definidas
+- **Database per Service**: Cada servicio tiene su propia base de datos (`products_db` y `orders_db`)
+- Esquemas Prisma independientes con migraciones y cliente generado por servicio
+- Aislamiento de dominios para escalabilidad y mantenibilidad independiente
+
+### 2. Comunicación Híbrida: Síncrona + Event-Driven
+
+**Comunicación Síncrona (HTTP/REST):**
+- Validación de productos y stock desde Orders Service a Products Service vía HTTP
+- `ProductsValidationService` implementa validaciones en paralelo usando `Promise.all` para mejor performance
+- Fail-fast: validación de stock **antes** de crear la orden para garantizar consistencia
+
+**Comunicación Asíncrona (SNS/SQS):**
+- Eventos de dominio (`ORDER_CREATED`) publicados a SNS Topic
+- SQS Queue para desacoplamiento y procesamiento eventual consistente
+- Products Service consume eventos para decrementar stock de forma asíncrona
+- `EventPublisherService` centralizado en librería compartida (`libs/events`)
+
+### 3. Monorepo con Código Compartido
+
+- Estructura NestJS con `apps/` (microservicios) y `libs/` (código compartido)
+- **Shared libraries**:
+  - `libs/commons`: DTOs de paginación y utilidades comunes
+  - `libs/events`: Sistema de eventos completo (publisher, consumer, domain events)
+- Reutilización de código sin duplicación entre servicios
+- Dependencias compartidas centralizadas en el `package.json` raíz
+
+### 4. Infraestructura Local con LocalStack
+
+- Simulación completa de servicios AWS (SNS, SQS, API Gateway) sin costos de cloud
+- Script `init-aws.sh` para inicialización automática de recursos AWS al arrancar
+- API Gateway configurado como proxy único con rutas `/products` y `/orders`
+- Datos persistentes de LocalStack en volumen para mantener configuración entre reinicios
+
+### 5. Gestión de Datos y Migraciones Automatizadas
+
+- **Prisma ORM** con generación de cliente personalizada por servicio
+- Generadores configurados con output personalizado: `../src/generated/prisma`
+- `entrypoint.sh` ejecuta migraciones automáticamente al iniciar contenedores
+- Seeding automático e idempotente de productos desde SQL
+- Prisma 7 con archivos `prisma.config.ts` para configuración moderna
+
+### 6. CI/CD Pipeline Completo con Semantic Release
+
+- **Conventional Commits** para mensajes de commit estandarizados
+- **Semantic Release** para versionado automático (major, minor, patch)
+- **GitHub Actions** con 3 workflows especializados:
+  - **CI**: lint, test, build paralelo de servicios con cache de dependencias
+  - **CD**: versionado semántico, generación de CHANGELOG, Docker build/push a GHCR, smoke tests
+  - **Manual Release**: deploy controlado a diferentes ambientes con parámetros
+- Artifacts para tracking de builds y reportes de cobertura
+- Rollback automático si fallan los smoke tests en deploy
+
+### 7. Docker Multi-stage Build Optimizado
+
+- Build multi-etapa (builder + runtime) para imágenes ligeras en producción
+- Build argument `APP_NAME` permite construir múltiples servicios desde el mismo Dockerfile
+- Generación de Prisma Client durante la fase de build para evitar errores de tipado
+- Alpine Linux para imagen base minimal
+- Healthchecks configurados para todos los servicios con `depends_on` condicional
+
+### 8. Persistencia y Resiliencia
+
+- Docker volumes para PostgreSQL (`postgres_data`) mantienen datos entre reinicios
+- LocalStack data persistente en `localstack_data` para configuración de infraestructura
+- Healthchecks en `depends_on` garantizan orden de inicio correcto (DB → LocalStack → Services)
+- Scripts de inicialización idempotentes para base de datos y AWS
+
+### 9. Validaciones Robustas y Manejo de Errores
+
+- Validación de stock **antes** de crear orden (fail-fast approach)
+- Validaciones en paralelo para múltiples productos usando `Promise.all`
+- Respuestas de error estructuradas con detalles múltiples y específicos
+- `class-validator` y `class-transformer` para validación de DTOs en capa de API
+- Logging detallado con NestJS Logger para debugging y monitoreo
+
+### 10. Configuración Flexible y Portabilidad
+
+- Variables de entorno para todos los endpoints y configuraciones
+- `ConfigService` de NestJS para inyección de dependencias de configuración
+- Mismas imágenes Docker funcionan en local, staging y production
+- Endpoint AWS configurable (`AWS_ENDPOINT`) para cambiar entre LocalStack y AWS real
+- Sin hardcodeo de valores, todo parametrizable por ambiente
+
+### Principios de Diseño Aplicados
+
+- **Separation of Concerns**: Cada servicio maneja su propio dominio
+- **Database per Service**: Aislamiento de datos para independencia
+- **Event-Driven Architecture**: Desacoplamiento temporal entre servicios
+- **API Gateway Pattern**: Punto de entrada único para clientes
+- **Fail Fast**: Validaciones tempranas para evitar estados inconsistentes
+- **Infrastructure as Code**: Todo definido en docker-compose y scripts
+- **DRY (Don't Repeat Yourself)**: Código compartido en libs
+- **Convention over Configuration**: Conventional commits, Prisma conventions
+- **Automation First**: Migraciones, seeding, CI/CD todo automatizado
+
+---
+
+## 🎯 Beneficios de estas Decisiones
+
+1. **Developer Experience**: Hot reload, LocalStack, migraciones automáticas, monorepo
+2. **Escalabilidad**: Microservicios independientes, bases de datos separadas
+3. **Mantenibilidad**: Código compartido, conventional commits, versionado automático
+4. **Confiabilidad**: Healthchecks, validaciones robustas, rollback automático
+5. **Portabilidad**: Mismas imágenes en todos los ambientes, configuración flexible
+6. **Observabilidad**: Logging estructurado, pipeline con artifacts y reportes
+7. **Costo-eficiencia**: LocalStack para desarrollo sin gastos de AWS
+8. **Production-ready**: CI/CD completo, Docker optimizado, pruebas automatizadas
 
 ## 📄 Licencia
 
 Este proyecto es privado y confidencial.
-
----
-
-**¿Necesitas ayuda?** Revisa la sección de Troubleshooting o contacta al equipo de desarrollo.
