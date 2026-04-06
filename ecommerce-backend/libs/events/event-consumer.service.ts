@@ -50,7 +50,7 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     this.polling = true;
-    await this.startPolling();
+    void this.startPolling();
   }
 
   async onModuleDestroy() {

@@ -19,8 +19,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./apps/ecommerce-backend/test/jest-e2e.json",
     "release": "semantic-release",
-    "release:dry": "semantic-release --dry-run",
-    "release": "semantic-release"
+    "release:dry": "semantic-release --dry-run"
   },
   "dependencies": {
     "@aws-sdk/client-sns": "^3.712.0",

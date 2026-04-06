@@ -34,7 +34,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
-
     networks:
       - ecommerce_network
     healthcheck:
@@ -76,7 +75,6 @@ services:
       - DATABASE_URL=postgresql://admin:ecommerce_pass@postgres_db:5432/orders_db
       - AWS_ENDPOINT=http://localstack:4566
       - PRODUCTS_SERVICE_URL=http://products_service:3000
-
     depends_on:
       postgres_db:
         condition: service_healthy
